@@ -1,0 +1,149 @@
+							------------------------SCHEME---------------------
+
+
+~ The global stack descriptor will be an array of structures, to be accessed by a public key, and the individual stacks can be simple arrays.
+Now we know that shared memory is only a chunk of memory,so we have to use the pointer judiciously, to access the various data elements. 
+For example, if pi is the pointer to the shared memory, then pi[0]=shared_stacks[0].key, pi[1]=shared_stacks[0].data_size,....
+pi[sizeof(stackdesc)*i*0]=shared_stacks[i].key, pi[sizeof(stackdesc)*i*1]=shared_stacks[i].data_size,etc.
+
+
+
+~ The first process to be executed should create the Stack descriptor data structure, of MAX_STACK size, and the next processes should just get the shared memory id, 
+of the created stack descriptor.
+
+~ The shared memory of the individual stacks should be created and attached in such a way that 1 stack should not interfere with the memory space of another.
+
+~ There has to be a global key value which will be known to all the processes who try to access the shared_stacks data structure.
+
+~ Following are the potential critical sections where 2 processes may be involved in race condition :
+
+1. Two or more concurrent processes try to simultaneously create any shared memory segment.
+
+2. Two or more concurrent processes try to simultaneously modify some value in the same position of the same stack.
+
+3. Out of two or more concurrent processes, 1 process tries to modify some value in the stack which some other process has simultaneously popped.
+
+4. Two or more concurrent processes try to simultaneously push and/or pop some value in the same position of the same stack.
+
+
+~ Accordingly, semaphores should be used in the following cases in order to avoid race condition:
+
+1. A process tries to create the shared memory segment for the Stack_desc data structure.
+
+2. A process tries to create a stack with a key value which,according to stack_desc, is free.
+
+3. A process tries to modify some data already stored in stack.
+
+4. A process tries to push/pop some data.
+
+5. A process tries to remove a stack (accordingly, stack_desc[i].free should be set to true).
+
+
+
+
+
+
+
+
+
+
+The header file (along with the possible interfaces) can be as follows:
+
+key_t public_key; //public_key=some known value.
+shmid stack_desc_id; //shmid of the stack_desc structure
+
+stack_desc_id=shmget(public_key, MAX_STACK*sizeof(stackdesc), IPC_CREAT | 0777);
+
+//the stack_desc data structure should also be global so that these functions can access it.
+
+
+//this function is only to create individual stacks
+int shstackget(key, element_size, stack_size)
+{
+	int flag=0,shmid;
+	//first we will find whether some stack with the key value already exists or not
+	
+		for(int i=0; i<MAX_STACK; i++)
+		{
+			if(shared_stacks[i].stackKey==key)
+			{
+				flag=1;
+				break;
+			}
+			
+		}
+		if(flag==1)
+		{
+			return i;  //if it exists return the index of the stack_desc data structure
+		}
+		else
+		{
+			// Otherwise create the stack as a shared memory segment
+
+			for(int i=0;i<MAX_STACK;i++)
+			{
+				if(shared_stacks[i].free==true)
+					break;
+			}
+			shmid=shmget(key, stack_size*element_size, IPC_CREAT | 0777);
+			shared_stacks[i].stackKey=key;
+			shared_stacks[i].data_size=element_size;
+			shared_stacks[i].stack_size=stack_size;
+
+			return i;
+
+		}
+
+}
+
+void shstackpush(int index, int value)
+{
+    int num;
+    if (shared_stacks[index].stack_top == (shared_stacks[index].stack_size - 1))
+    {
+        printf ("Stack is Full\n");
+        return;
+    }
+    else
+    {
+        shared_stacks[index].stack_top++;
+        shared_stacks[index].stack_top[0]=value;
+    }
+    return;
+}
+
+
+
+int shstackpop(int index)
+{
+    int num;
+    if (shared_stacks[index].stack_top == SOME_MARKED_VALUE)
+    {
+        printf ("Stack is Empty\n");
+        return -1;
+    }
+    else
+    {
+        num = shared_stacks[index].stack_top[0];
+        shared_stacks[index].stack_top--;
+    }
+    return(num);
+}
+
+
+
+
+Assumptions:
+
+~All the variable names, data structures mentioned in question are used as it is.
+
+~stack_top is an integer ponter.
+
+~ There should be 2 different functions, one (shstack_descget()) to create or get the shmid of the stack desc data structure, and another function (shstackget()) 
+to access a particular stack.
+
+~ The shared_stacks data structure is already created.
+
+~ Semaphores are created and appropriately used by the different processes.
+
+~ Shared memory are also attached by the different processes.
