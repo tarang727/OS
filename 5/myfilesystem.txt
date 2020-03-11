@@ -1,0 +1,163 @@
+-----------------------OVERALL DESIGN OF MY FILESYSTEM---------------------
+
+1. Here, the filesystem actually works on the os file provided.
+
+
+The mkfs command can be implemented as follows:
+
+Firstly, the superblock has to be assigned,which will be some number of fixed bytes, from the beginning of the osfile. Immediately after this, all the inodes have to be assigned(if necessary) upto a particular number of bytes, and immediately after this, the data blocks have to be assigned(if necessary), till the end of the file.
+
+The superblock can have the following data elements (inside a struct):
+
+~ hard disk size(total size of the os file,taken as input from user)
+~  inode number of the root directory(root "folder" also has to be created at the time of creation of filesystem. This means an inode as to be allocated and initialized.)
+~  size of each block
+~ size of each inode block(ideally determined based on filesize, but in our case we will fix it)
+~ size of each data block(we will fix this also)
+~ start location of inode blocks(in this case just where the superblock finishes)
+~ start location of data blocks(after (no. of inodes*size of each inode))
+~ number of inodes
+~ number of free inodes
+~ no of data blocks
+~ no of free data blocks
+~ bitmap to denote which inodes are used and which are free
+~ bitmap to denote which data blocks are used and which are free
+
+Each inode can store the following(inside a struct):
+
+~ type(file or folder)
+~ name 
+~ size of the file(or folder)
+~ number of data blocks
+~ array to indicate which data blocks are used.
+
+Also, meta data about each file will include the following(inside a struct,size of this struct, for now, assumed to be smaller than data block) :
+
+~ name of file
+~ type of this file
+~ inode number of this file
+~ permissions related to this file
+
+
+
+If mkfs command calls the function createfilesystem() with parameter being the osfile name, size of each block, and total file size, it can be implemented as follows:
+
+>fd=open(filename) //other parameters ignored for now. This will create the osfile.
+
+
+>ftruncate(fd, total file size) //this will truncate(fix) size of osfile to value given
+
+Then we can assign the appropriate values in superblock structure(based on all information provided above).
+The root inode no. should be 0. Inode bitmap should also mark first bit as 1(root).
+>lseek(fd, 0) //beginning of file
+
+>write(fd, &superblock, sizeof(superblock)) //superblock should be written back to beginning of file
+
+After this the root inode values should also be initialized. (type=dir, name=root, other values not initialized now, as no data exists)
+
+>lseek(fd, offset) //other parameters ignored. The offset should be set after (size of superblock)
+
+>write(fd, &root_inode, sizeof(root_inode))
+
+Data blocks need not be initialized right now.
+
+This completes make filesystem command.
+
+
+
+The use osfile as C: can be implemented as follows:
+
+Firstly, a mapping can be created, using a 2D char* array, with 2 columns, 1st column will have osfile name, and 2nd column will have the name assigned to that file (here C:). So later, we can search the 2nd column for that particular "drive", and get the osfile name, and use open() on that filename.
+
+Also, the root folder name also has to be changed.
+
+>fd=open(osfile) //since it already exists, so it will just be opened.
+
+>lseek(fd, offset) //offset set after (size of superblock)
+
+>read(fd, (struct inode*)buffer, sizeof(inode)) //root inode read into buffer, which is of type struct inode
+
+>buffer.name="C:"	//changing name of root folder to C:
+
+>write(fd, &buffer, sizeof(inode)) //writing it back.
+
+
+
+
+
+The cp command can be implemented as follows:
+
+It will have 2 cases:
+
+
+
+First case: If some osfile is copied into our filesystem-
+
+e.g : cp osfile3 C:tesfile1
+
+
+
+
+>fd1=fopen(osfile) //which is given as input 
+
+>lseek(fd1, 0) //beginning of file
+
+~ Next we will find the mapping of "C:" in our 2d array, and find which osfile that refers to.
+
+>fd2=fopen(osfile_returned)
+
+>lseek(fd2, 0) //beginning of file
+
+>read(fd2, (struct supernode*)super_buffer, sizeof(supernode) ) //reading the supernode
+
+From super_buffer, we will get the start location of datablocks, and pointer is now at beginning of root inode
+
+>read(fd2, (struct inode*)root_buffer, sizeof(inode)) //getting the root inode in root_buffer
+
+Now we will set root_inode.size_of_file=size of osfile
+
+
+Now, we will go to beginning of data blocks.
+
+>fd3=fopen(osfile_returned)
+
+>lseek(fd3, offset) //offset got from supernode 
+
+Now, we will store the metadata of the file in a buffer, and store the buffer inside the datablocks(process defined below).
+Accordingly, the block number will be stored in root_buffer.array_of_datablocks
+
+Next we will create a new inode for the file, and initialize the values.
+
+Now we will start copying:
+
+>lseek(fd3, offset) //again from beginning of datablocks
+>char* buffer=(char*)malloc(sizeof(datablock));
+>int index=0;
+
+while(read(fd1, buffer, sizeof(datablock)!=-1 ))
+{
+	//see if index'th bit of datablocks bitmap is 0
+	if true:
+		lseek(fd3, offset) //offset decided according to value of index and size of each datablock
+		write(fd3, &buffer, sizeof(datablock));
+		if write successful:
+			set index'th bit of super_buffer.data_blocks_bitmap as 1.
+			store index value in the array of datablocks of inode of the file just created.
+			increase count of datablocks used in inode by 1.
+			increase count of datablocks used in supernode by 1.
+			decrease count of free datablocks in supernode by 1.
+
+
+
+	else:
+		//keep searching
+
+
+	
+}
+
+Finally, the supernode_buffer, root_node, and inode of file just created will be written back.
+
+
+2nd case: It will be similar to above, but instead of osfile, we will copy from datablocks of 1 file to another.
+
